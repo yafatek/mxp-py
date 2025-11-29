@@ -5,24 +5,24 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published ]
+
+permissions:
+  contents: read
 
 jobs:
   test:
-    name: Test on ${{ matrix.os }}
+    name: Test - Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: true
     
-    - name: Set up Python
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
@@ -41,18 +41,29 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     
-    - name: Install maturin
-      run: pip install maturin[patchelf] pytest
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install maturin[patchelf] pytest
     
-    - name: Build wheels
+    - name: Build package
       run: maturin build --release
     
-    - name: Install built wheel
-      run: pip install target/wheels/*.whl
+    - name: Install package
+      shell: bash
+      run: |
+        pip install target/wheels/*.whl
     
     - name: Run tests
-      run: pytest tests/
-  
+      run: pytest tests/ -v
+    
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: target/wheels/*.whl
+        retention-days: 7
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -70,13 +81,14 @@ jobs:
         components: rustfmt, clippy
     
     - name: Check Rust formatting
-      run: cargo fmt -- --check
+      run: cargo fmt --all -- --check
     
     - name: Run Clippy
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --all-targets -- -D warnings
     
-    - name: Install Python linters
-      run: pip install black ruff
+    - name: Install Python tools
+      run: |
+        pip install black ruff
     
     - name: Check Python formatting
       run: black --check python/ tests/
@@ -84,16 +96,11 @@ jobs:
     - name: Run ruff
       run: ruff check python/ tests/
 
-  publish:
-    name: Publish to PyPI
+  coverage:
+    name: Code Coverage
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    needs: [test, lint]
-    
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: true
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -103,13 +110,20 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     
-    - name: Install maturin
-      run: pip install maturin[patchelf]
+    - name: Install dependencies
+      run: |
+        pip install maturin pytest pytest-cov
     
-    - name: Build wheels
-      run: maturin build --release --strip
+    - name: Build and install
+      run: |
+        maturin develop
     
-    - name: Publish to PyPI
-      env:
-        MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-      run: maturin publish --skip-existing
+    - name: Run tests with coverage
+      run: pytest tests/ --cov=mxp --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.xml
+        flags: unittests
+        name: codecov-mxp-py

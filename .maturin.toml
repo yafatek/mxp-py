@@ -1,3 +1,0 @@
-[package.metadata.maturin]
-# This is required for maturin to work correctly
-name = "mxp"

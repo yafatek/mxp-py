@@ -2,6 +2,8 @@
 
 Python bindings for the MXP Protocol. This repo is an early scaffold while the Rust core stabilizes.
 
+<img src="assets/mxp-py-social.png" alt="MXP Python SDK overview" width="1200" />
+
 ## Status
 
 - Early stage and evolving API surface.
